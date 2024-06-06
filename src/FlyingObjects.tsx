@@ -1,5 +1,12 @@
-import React, { useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated';
 import { ObjectConfig } from './index';
 
 interface FlyingObjectsProps {
@@ -19,6 +26,7 @@ const FlyingObjects = ({ objectConfig }: FlyingObjectsProps) => {
       fromValue: 0,
       toValue: 0,
       duration: 1200,
+      easing: Easing.linear,
       delay: 0,
     },
     show: {
@@ -33,56 +41,57 @@ const FlyingObjects = ({ objectConfig }: FlyingObjectsProps) => {
 
   const { object, top, right, show, hide } = objectConfig;
 
-  const [animation, setAnimation] = useState<boolean>(true);
-  const topValue = useRef(
-    new Animated.Value(top?.fromValue ?? defaultConfig.top.fromValue),
-  ).current;
-  const rightValue = useRef(
-    new Animated.Value(right?.fromValue ?? defaultConfig.right.fromValue),
-  ).current;
-  const opacityValue = useRef(new Animated.Value(0)).current;
+  const topValue = useSharedValue(top?.fromValue ?? defaultConfig.top.fromValue);
+  const rightValue = useSharedValue(right?.fromValue ?? defaultConfig.right.fromValue);
+  const opacityValue = useSharedValue(0);
 
-  if (animation) {
-    Animated.timing(opacityValue, {
-      toValue: 1,
-      duration: show?.duration ?? defaultConfig.show.duration,
-      delay: show?.delay ?? defaultConfig.show.delay,
-      useNativeDriver: false,
-    }).start(() => {
-      Animated.timing(opacityValue, {
-        toValue: 0,
-        duration: hide?.duration,
-        delay: hide?.delay ?? defaultConfig.hide.delay,
-        useNativeDriver: false,
-      }).start();
-    });
+  const animatedStyles = useAnimatedStyle(() => ({
+    top: topValue.value,
+    right: rightValue.value,
+    opacity: opacityValue.value,
+  }));
 
-    Animated.timing(topValue, {
-      toValue: top?.toValue ?? defaultConfig.top.toValue,
-      duration: top?.duration ?? defaultConfig.top.duration,
-      easing: top?.easing ?? defaultConfig.top.easing,
-      delay: top?.delay ?? defaultConfig.top.delay,
-      useNativeDriver: false,
-    }).start();
+  useEffect(() => {
+    const maxDuration = Math.max(
+      top?.duration ?? defaultConfig.top.duration,
+      right?.duration ?? defaultConfig.right.duration,
+    );
 
-    Animated.timing(rightValue, {
-      toValue: right?.toValue ?? defaultConfig.right.toValue,
-      duration: right?.duration ?? defaultConfig.right.duration,
-      easing: right?.easing,
-      delay: right?.delay ?? defaultConfig.right.delay,
-      useNativeDriver: false,
-    }).start();
+    opacityValue.value = withDelay(
+      show?.delay ?? defaultConfig.show.delay,
+      withTiming(1, {
+        duration: show?.duration ?? defaultConfig.show.duration,
+      }),
+    );
 
-    setAnimation(false);
-  }
+    topValue.value = withDelay(
+      top?.delay ?? defaultConfig.top.delay,
+      withTiming(top?.toValue ?? defaultConfig.top.toValue, {
+        duration: top?.duration ?? defaultConfig.top.duration,
+        easing: top?.easing ?? defaultConfig.top.easing,
+      }),
+    );
 
-  return (
-    <Animated.View
-      style={{ ...styles.object, top: topValue, right: rightValue, opacity: opacityValue }}
-    >
-      {object}
-    </Animated.View>
-  );
+    rightValue.value = withDelay(
+      right?.delay ?? defaultConfig.right.delay,
+      withTiming(right?.toValue ?? defaultConfig.right.toValue, {
+        duration: right?.duration ?? defaultConfig.right.duration,
+        easing: right?.easing ?? defaultConfig.right.easing,
+      }),
+    );
+
+    const fadeOutStartDelay = maxDuration - (hide?.duration ?? defaultConfig.hide.duration);
+
+    opacityValue.value = withDelay(
+      fadeOutStartDelay > 0 ? fadeOutStartDelay : 0,
+      withTiming(0, {
+        duration: hide?.duration ?? defaultConfig.hide.duration,
+        easing: Easing.linear,
+      }),
+    );
+  }, []);
+
+  return <Animated.View style={[styles.object, animatedStyles]}>{object}</Animated.View>;
 };
 
 const styles = StyleSheet.create({
